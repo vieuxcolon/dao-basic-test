@@ -2,13 +2,18 @@
 set -e
 
 FILE="compatible-fullstack-versions.txt"
+RESULT_FILE="compatibility-results.txt"
 
 echo "===== Running compatibility tests (strict npm install) ====="
+echo "Compatibility test results" > $RESULT_FILE
 
 # Skip comment/header lines
 grep -v "^#" "$FILE" | while read HARDHAT ETHERS DOTENV REACT REACTDOM; do
+    COMBO="$HARDHAT $ETHERS $DOTENV $REACT $REACTDOM"
+    LOG_FILE="install-${HARDHAT}-${ETHERS}.txt"
+
     echo
-    echo "===== Testing combination: Hardhat $HARDHAT, Ethers $ETHERS, Dotenv $DOTENV, React $REACT, ReactDOM $REACTDOM ====="
+    echo "===== Testing combination: $COMBO ====="
 
     # Create temp package.json for this combination
     cat > temp-package.json <<EOL
@@ -32,15 +37,17 @@ EOL
     # Clean old installs
     rm -rf node_modules package-lock.json
 
-    # Install dependencies strictly (same as Docker)
-    if npm install > install-log.txt 2>&1; then
-        echo "✅ Combination succeeded: Hardhat $HARDHAT, Ethers $ETHERS, Dotenv $DOTENV, React $REACT, ReactDOM $REACTDOM"
+    # Install dependencies strictly and log output
+    if npm install > "$LOG_FILE" 2>&1; then
+        echo "✅ $COMBO" | tee -a $RESULT_FILE
     else
-        echo "❌ Combination FAILED. Check install-log.txt for details."
+        echo "❌ $COMBO" | tee -a $RESULT_FILE
+        echo "Check $LOG_FILE for details"
     fi
 
-    # Cleanup after each iteration
+    # Cleanup
     rm -rf node_modules package-lock.json temp-package.json
 done
 
 echo "===== Compatibility test completed ====="
+echo "✅ Results summary: $RESULT_FILE"
