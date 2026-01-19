@@ -1,36 +1,52 @@
 #!/bin/bash
 set -e
 
-IMAGE_NAME="dao-basic-test-dao-test"
-CONTAINER_NAME="dao-test"
+# Input and output files
+FILE="compatibility-results.txt"   # already generated from compatibility test
+NPM_FILE="npm-available.txt"
 
-echo "🛑 Cleaning up old container if exists..."
-docker rm -f $CONTAINER_NAME >/dev/null 2>&1 || true
+echo "===== Checking which compatible versions exist on npm ====="
+# Clear previous results
+> "$NPM_FILE"
 
-echo "🐳 Building Docker image..."
-docker compose build
+# Read file line by line (avoids subshell issues)
+while read -r HARDHAT ETHERS DOTENV REACT REACTDOM; do
+    # Skip empty lines
+    [[ -z "$HARDHAT" ]] && continue
 
-echo "🐳 Starting container..."
-docker compose up -d
+    COMBO="$HARDHAT $ETHERS $DOTENV $REACT $REACTDOM"
+    echo -n "Testing npm availability for $COMBO ... "
 
-echo "🧪 Running compatibility test inside container..."
-docker exec -it $CONTAINER_NAME bash -c "./test-compatibility.sh"
+    AVAILABLE=true
 
-# Copy logs and results from container to host
-echo "📁 Copying logs and results to host..."
-docker cp $CONTAINER_NAME:/app/install-logs ./install-logs
-docker cp $CONTAINER_NAME:/app/failed-combos ./failed-combos
-docker cp $CONTAINER_NAME:/app/compatibility-results.txt ./compatibility-results.txt
+    # Check main packages
+    for PKG in hardhat@$HARDHAT ethers@$ETHERS dotenv@$DOTENV react@$REACT react-dom@$REACTDOM; do
+        if ! npm view "$PKG" version >/dev/null 2>&1; then
+            AVAILABLE=false
+            break
+        fi
+    done
 
-echo
-echo "✅ Passed combinations:"
-grep "✅" compatibility-results.txt
+    # Only check Hardhat Toolbox if the main Hardhat version exists
+    if [ "$AVAILABLE" = true ]; then
+        # Find the latest @nomicfoundation/hardhat-toolbox that matches major.minor of Hardhat
+        TOOLBOX_MAJOR_MINOR=$(echo "$HARDHAT" | awk -F. '{print $1 "." $2}')
+        TOOLBOX_VERSION=$(npm view @nomicfoundation/hardhat-toolbox@"$TOOLBOX_MAJOR_MINOR".* version 2>/dev/null || true)
 
-echo
-echo "All per-combo logs are in ./install-logs/"
-echo "Failed combos (if any) are in ./failed-combos/"
-echo "Summary in compatibility-results.txt"
+        if [ -z "$TOOLBOX_VERSION" ]; then
+            AVAILABLE=false
+        fi
+    fi
 
-echo
-echo "🔹 You can enter the container for inspection:"
-echo "docker exec -it $CONTAINER_NAME bash"
+    # Write to file if all packages exist
+    if [ "$AVAILABLE" = true ]; then
+        echo "$COMBO" >> "$NPM_FILE"
+        echo "✅ Available (Toolbox: $TOOLBOX_VERSION)"
+    else
+        echo "❌ Not available on npm"
+    fi
+
+done < <(grep -v "^#" "$FILE")  # skip header/comments
+
+echo "===== npm availability check completed ====="
+echo "✅ Results written to $NPM_FILE"
