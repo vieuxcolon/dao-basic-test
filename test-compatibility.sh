@@ -3,26 +3,25 @@ set -e
 
 FILE="compatible-fullstack-versions.txt"
 RESULT_FILE="compatibility-results.txt"
-FAILED_DIR="failed-combos"
+
+# Create log directories on host
+mkdir -p ./install-logs ./failed-combos-host
 
 echo "===== Running compatibility tests (strict npm install) ====="
 echo "Compatibility test results" > "$RESULT_FILE"
 
-# Create folder for failed combinations
-mkdir -p "$FAILED_DIR"
-
-# Use redirect to avoid subshell issues
+# Read each line from the versions file
 while read HARDHAT ETHERS DOTENV REACT REACTDOM; do
+    # Skip comments or empty lines
+    [[ "$HARDHAT" =~ ^# ]] && continue
+    [[ -z "$HARDHAT" ]] && continue
+
     COMBO="$HARDHAT $ETHERS $DOTENV $REACT $REACTDOM"
-    LOG_FILE="install-${HARDHAT}-${ETHERS}.txt"
-    TEMP_DIR="temp-${HARDHAT}-${ETHERS}"
+    LOG_FILE="./install-logs/install-${HARDHAT}-${ETHERS}.txt"
+    FAILED_DIR="./failed-combos-host/${HARDHAT}-${ETHERS}"
 
     echo
     echo "===== Testing combination: $COMBO ====="
-
-    # Create a temp folder per combination
-    mkdir -p "$TEMP_DIR"
-    cd "$TEMP_DIR"
 
     # Create temp package.json for this combination
     cat > temp-package.json <<EOL
@@ -43,24 +42,26 @@ while read HARDHAT ETHERS DOTENV REACT REACTDOM; do
 }
 EOL
 
-    # Clean old installs (just in temp folder)
+    # Clean old installs
     rm -rf node_modules package-lock.json
 
-    # Install dependencies with legacy peer deps
-    if npm install --legacy-peer-deps > "$LOG_FILE" 2>&1; then
-        echo "✅ $COMBO" | tee -a "../$RESULT_FILE"
-        # Cleanup temp folder for successful combos
-        cd ..
-        rm -rf "$TEMP_DIR"
+    # Run npm install and log output
+    if npm install > "$LOG_FILE" 2>&1; then
+        echo "✅ $COMBO" | tee -a "$RESULT_FILE"
     else
-        echo "❌ $COMBO" | tee -a "../$RESULT_FILE"
-        echo "Check $TEMP_DIR/$LOG_FILE for details"
-        # Move failed combo folder to FAILED_DIR
-        cd ..
-        mv "$TEMP_DIR" "$FAILED_DIR/"
+        echo "❌ $COMBO" | tee -a "$RESULT_FILE"
+        echo "Check $LOG_FILE for details"
+        # Save failed logs in a separate directory
+        mkdir -p "$FAILED_DIR"
+        cp "$LOG_FILE" "$FAILED_DIR/"
     fi
-done < <(grep -v "^#" "$FILE")
+
+    # Cleanup for next iteration
+    rm -rf node_modules temp-package.json
+
+done < "$FILE"
 
 echo "===== Compatibility test completed ====="
 echo "✅ Results summary: $RESULT_FILE"
-echo "❌ Failed combinations saved in: $FAILED_DIR/"
+echo "All per-combo logs are in ./install-logs/"
+echo "Failed combo environments are in ./failed-combos-host/"
