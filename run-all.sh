@@ -19,7 +19,7 @@ docker exec -it $CONTAINER_NAME bash -c "./test-compatibility.sh"
 # Copy logs and results from container to host
 echo "📁 Copying logs and results to host..."
 docker cp $CONTAINER_NAME:/app/install-logs ./install-logs
-docker cp $CONTAINER_NAME:/app/failed-combos-host ./failed-combos-host
+docker cp $CONTAINER_NAME:/app/failed-combos ./failed-combos
 docker cp $CONTAINER_NAME:/app/compatibility-results.txt ./compatibility-results.txt
 
 echo
@@ -28,7 +28,7 @@ grep "✅" compatibility-results.txt
 
 echo
 echo "All per-combo logs are in ./install-logs/"
-echo "Failed combo environments are in ./failed-combos-host/"
+echo "Failed combos (if any) are in ./failed-combos/"
 echo "Summary in compatibility-results.txt"
 
 echo
